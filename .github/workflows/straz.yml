@@ -1,0 +1,30 @@
+name: straz-vps
+# Bicie serca VPS: plik bicie.txt (1. linia = epoch), pisze go ~/architekt-vps/straz/bicie.sh z architekt-check.timer
+# co 30 min. Bicie starsze niż PROG minut = bieg OBLANY, a GitHub wysyła właścicielowi konta e-mail o oblanym workflow
+# — spoza VPS, bez sekretów. Powód: 25.09 11:53 → 26.09 21:36 VPS bez sieci (nieopłacony), wszystkie alarmy wychodziły
+# z tej samej maszyny, Nikodem dowiedział się sam po ~33 h.
+# Oblewa w oknie [PROG, PROG+60) min i potem raz na 6 h — nie co pół godziny przez całą awarię.
+on:
+  schedule:
+    - cron: '13,43 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  bicie:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: wiek bicia VPS
+        env:
+          PROG: '60'
+        run: |
+          T=$(head -1 bicie.txt); TERAZ=$(date +%s); W=$(( (TERAZ - T) / 60 ))
+          echo "ostatnie bicie VPS: $(date -u -d @"$T" '+%F %T UTC') — $W min temu (próg $PROG min)" | tee -a "$GITHUB_STEP_SUMMARY"
+          if (( W < PROG )); then exit 0; fi
+          if (( (W - PROG) % 360 < 60 )); then
+            echo "::error::VPS milczy od $W min (próg $PROG). Konsola Hetzner Cloud: płatność, stan serwera, sieć."
+            exit 1
+          fi
+          echo "::warning::VPS milczy od $W min — e-mail poszedł w oknie [$PROG, $((PROG + 60))) min, następny co 6 h"
